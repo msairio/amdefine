@@ -26,6 +26,8 @@ function amdefine(module, requireFn) {
         path = require('path'),
         makeRequire, stringRequire;
 
+	var config = amdefine._configs[module.id] || {};
+    
     /**
      * Trims the . and .. from an array of path segments.
      * It will keep a leading path segment if a .. will become
@@ -215,6 +217,26 @@ function amdefine(module, requireFn) {
                 return loaderCache[id];
             } else {
                 if(systemRequire) {
+                	//When a module is required using amdefine for the first time
+                	//it's paths are resolved using the configuration effective
+                	//in the current inheritance tree.
+                	if (config && config.paths) {
+                		var ary = config.paths;
+                        var i, part;
+                        for(var stub in ary) {
+                        	var matcher = new RegExp('^' + stub);
+                        	if (matcher.test(originalId)) {
+        						//Found matching start for the path, replacement is applied to originalId
+                        		originalId = originalId.replace(matcher, ary[stub]);
+                        		break; 
+                        	}
+                        } 
+                	}
+                	//Configuration is bubbled down to the child module. Configurations
+                	//are referenced by module id which is resolved to a filename by
+                	//require.resolve(id)
+                	var childModuleId = require.resolve(originalId);
+                	amdefine._configs[childModuleId] = config;
                     return systemRequire(originalId);
                 } else {
                     throw new Error('No module with ID: ' + id);
@@ -296,4 +318,16 @@ function amdefine(module, requireFn) {
     return define;
 }
 
+amdefine._configs = {};
+
+//amdefine.config provides a way of setting requirejs-like 
+//configuration for resolving pahts dynamically. The configuration
+//is inherited by the full module tree required using amdefine. 
+//Other modules, required by the normal node's require()
+//method will have their separate configurations.
+amdefine.config = function(value, module) {
+	return (amdefine._configs[module.id] = value || {}); 
+};
+
 module.exports = amdefine;
+
